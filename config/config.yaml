@@ -1,0 +1,20 @@
+Volume_Distributions:
+  Cycle: [30, 33, 37]     # length of Cycle becomes num of training blocks in cycle; this order is never shuffled
+  Block: [17, 22, 28, 33] # length of Block becomes num of training weeks per block
+  Week:  [15, 20, 30, 35] # length of Week becomes num of training days per week
+
+Weight_rounding_factor: 5
+
+Lifts:
+  Squat:
+    Max: 450
+    Cycle Volume: 300
+  Bench:
+    Max: 340
+    Cycle Volume: 450
+  Deadlift:
+    Max: 550
+    Cycle Volume: 150
+  Press:
+    Max: 180
+    Cycle Volume: 450
