@@ -1,8 +1,9 @@
 import numpy as np
 import pandas as pd
+import os
 from config.config import config_reader_yaml
 
-rng = np.random.default_rng(12345)
+rng = np.random.default_rng()
 
 
 def round_retain_sum(x):
@@ -80,7 +81,10 @@ def main():
 
     schedule_df = schedule_df.sort_values(['Block', 'Week', 'Day', 'Lift']).reset_index(drop=True)
     print(schedule_df.head(50))
-    schedule_df.to_csv('data/schedule.csv')
+
+    if not os.path.exists(config_dict['Results']['Directory']):
+        os.makedirs(config_dict['Results']['Directory'])
+    schedule_df.to_csv(os.path.join(config_dict['Results']['Directory'], config_dict['Results']['Filename']))
     
 
 

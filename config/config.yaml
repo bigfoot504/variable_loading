@@ -5,6 +5,10 @@ Volume_Distributions:
 
 Weight_rounding_factor: 5
 
+Results:
+  Directory: data
+  Filename: schedule.csv
+
 Lifts:
   Squat:
     Max: 450
@@ -17,4 +21,7 @@ Lifts:
     Cycle Volume: 150
   Press:
     Max: 180
+    Cycle Volume: 450
+  Row:
+    Max: 225
     Cycle Volume: 450
