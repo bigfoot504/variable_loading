@@ -16,10 +16,18 @@ class Lift:
     3: [26, 33, 41],
     4: [17, 22, 28, 33]
   }
+  vol_distr80 = {
+    n: [0.8**i for i in range(n)]
+    for n in [2, 3, 4, 5]
+  }
   vol_distr90 = {
     2: [47, 53],
     3: [30, 33, 37],
     4: [20, 23, 26, 31]
+  }
+  vol_distr90 = {
+    n: [0.9**i for i in range(n)]
+    for n in [2, 3, 4, 5]
   }
   def __init__(
     self,
@@ -35,7 +43,8 @@ class Lift:
     assert isinstance(name, str)
     assert isinstance(_max, (int, float)) and _max > 0
     assert isinstance(weekly_max_incr, (int, float)) and weekly_max_incr > 0
-    assert isinstance(total_volume, int) and total_volume > 0
+    total_volume = int(total_volume)
+    assert total_volume > 0
     self.name = name
     self.max = _max
     self.weekly_max_incr = weekly_max_incr
@@ -98,8 +107,8 @@ class Lift:
     load = (0.5 + x/2) * self.max
     return load
   
-  def gen_program(self):
-    rng = np.random.default_rng()
+  def gen_program(self, seed=None):
+    rng = np.random.default_rng(seed=seed)
     self.program = []
     vol_distr_blocks = rng.permutation(
       self.vol_distr90[self.num_blocks]
@@ -163,20 +172,20 @@ class Lift:
     if self.program is None:
       return
     for b, block in enumerate(self.program):
-      print(f"\n**----------Block {b}:----------**")
+      print(f"\n**----------Block {b+1}:----------**")
       vol_block = 0
       for w, week in enumerate(block):
-        print(f"\n*-----Week {w}:-----*\n")
+        print(f"\n*-----Week {w+1}:-----*\n")
         print(self.name)
         vol_week = 0
         for d, day in enumerate(week):
           wt = round(day["weight"]/self.round_weight)*self.round_weight
           vol = day["volume"]
-          print(f"Day {d}: {wt} lbs x {vol} reps")
+          print(f"Day {d+1}: {wt} lbs x {vol} reps")
           vol_week += vol
-        print(f"\nWeek {w} volume: {vol_week}")
+        print(f"\nWeek {w+1} volume: {vol_week}")
         vol_block += vol_week
-      print(f"Block {b} volume: {vol_block}")
+      print(f"Block {b+1} volume: {vol_block}")
 
 
 class VariableLoading:
@@ -188,17 +197,29 @@ class VariableLoading:
 
 
 def main():
-  squat = Lift(
-    "Squat", 405, 1, 600
+  deadlift = Lift(
+    "Deadlift", 475, 1,
+    total_volume=450,
+    num_days_per_week=3,
   )
   bench = Lift(
-    "Bench Press", 315, 0.5, 900
+    "Bench Press", 265, 0.5,
+    total_volume=700,
+    num_days_per_week=3,
+  )
+  pullup = Lift(
+    "Pull-up", 1, 0.5,
+    total_volume=800,
+    num_days_per_week=5,
   )
   VariableLoading.print_lifts()
-  squat.gen_program()
-  squat.print_program()
-  bench.gen_program()
+  #VariableLoading.gen_programs()
+  deadlift.gen_program(seed=101)
+  deadlift.print_program()
+  bench.gen_program(seed=102)
   bench.print_program()
+  pullup.gen_program(seed=103)
+  pullup.print_program()
 
 
 if __name__ == "__main__":
