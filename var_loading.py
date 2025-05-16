@@ -24,13 +24,16 @@ class Lift:
     num_days_per_week: int=4,
     num_weeks_per_block: int=4,
     num_blocks: int=3,
-    round_weight = 5,
+    round_weight_factor: float=5.0,
+    num_sets: tuple=(1, 1),
   ):
     assert isinstance(name, str)
     assert isinstance(_max, (int, float)) and _max > 0
     assert isinstance(weekly_max_incr, (int, float)) and weekly_max_incr > 0
     total_volume = int(total_volume)
     assert total_volume > 0
+    assert round_weight_factor > 0
+    assert len(num_sets) == 2 and all(isinstance(i, int) and i >= 1 for i in num_sets)
     self.name = name
     self.max = _max
     self.weekly_max_incr = weekly_max_incr
@@ -40,7 +43,8 @@ class Lift:
     self.num_days_per_week = num_days_per_week
     self.num_weeks_per_block = num_weeks_per_block
     self.num_blocks = num_blocks
-    self.round_weight = round_weight
+    self.round_weight_factor = round_weight_factor
+    self.num_sets = num_sets
   
   def __str__(self):
     return (
@@ -53,13 +57,24 @@ class Lift:
     return [p**i for i in range(n)]
   
   @staticmethod
+  def get_shape(x):
+    if type(x) == list:
+      shape = len(x)
+    elif type(x) == np.ndarray:
+      shape = x.shape
+    else:
+      shape = None
+    return shape
+  
+  @staticmethod
   def __rand_partition(x, n):
     # Randomly partition number or array x into n segments.
     # If x is int, then break x into n uniformly sized paritions
     # If x is array, then add a new dimension of length n and partition all elements along that new dimension
+    rng = np.random.default_rng()
     if type(x) == list:
       x = np.array(x)
-    x_shape = get_shape(x)
+    x_shape = Lift.get_shape(x)
     if type(x) == np.ndarray:
       bins = []
       for xi in x.flatten():
@@ -133,10 +148,11 @@ class Lift:
           volume_weeks[w] * vol_distr_days
         )
         for d in range(self.num_days_per_week):
+          num_sets = rng.integers(self.num_sets[0], self.num_sets[1]+1)
           self.program[b][w].append(
             {
-              "weight": self.gen_load(),
-              "volume": volume_days[d],
+              "weight": [self.gen_load() for _ in range(num_sets)],
+              "volume": self.__rand_partition(volume_days[d], num_sets),
             }
           )
         self.max += self.weekly_max_incr
@@ -157,6 +173,14 @@ class Lift:
       x_new = rng.permutation(x)
     
     return x_new
+  
+  def round_weight(self, weight):
+    rounded_weight = float(
+      round(
+        weight / self.round_weight_factor
+      ) * self.round_weight_factor
+    )
+    return rounded_weight
   
   def print_program(self):
     if self.program is None:
@@ -220,9 +244,10 @@ class VariableLoading:
             ):
               continue
             day = lift.program[b][w][d]
-            wt = round(day["weight"]/lift.round_weight)*lift.round_weight
-            vol = day["volume"]
-            _print(f"{lift.name+':':<{max_lift_name_len+1}} {wt:>3} lbs x {vol:>2} reps")
+            wts = [lift.round_weight(wt) for wt in day["weight"]]
+            vols = day["volume"]
+            for wt, vol in zip(wts, vols):
+              _print(f"{lift.name+':':<{max_lift_name_len+1}} {wt:>3} lbs x {vol:>2} reps")
   
   @staticmethod
   def print_lifts():
@@ -236,6 +261,7 @@ def main():
     "Deadlift", 475, 1,
     total_volume=450,
     num_days_per_week=3,
+    num_sets=(1,3),
   )
   bench = Lift(
     "Bench Press", 265, 0.5,
