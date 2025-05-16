@@ -6,29 +6,15 @@ New in this version is that it is object-oriented and hence more flexible.
 To-Do: A future version will use the VariableLoading class to generate one program for all of the lifts at one time and to print the comprehensive program.
 """
 
+from datetime import datetime
+import os
+
 import numpy as np
 
 
 class Lift:
   instances = []
-  vol_distr80 = {
-    2: [44, 56],
-    3: [26, 33, 41],
-    4: [17, 22, 28, 33]
-  }
-  vol_distr80 = {
-    n: [0.8**i for i in range(n)]
-    for n in [2, 3, 4, 5]
-  }
-  vol_distr90 = {
-    2: [47, 53],
-    3: [30, 33, 37],
-    4: [20, 23, 26, 31]
-  }
-  vol_distr90 = {
-    n: [0.9**i for i in range(n)]
-    for n in [2, 3, 4, 5]
-  }
+  
   def __init__(
     self,
     name: str,
@@ -61,6 +47,10 @@ class Lift:
       f"{self.name}: {self.max}\n" +
       f"{self.weekly_max_incr} increase per week.\n"
     )
+  
+  @staticmethod
+  def vol_distr(n, p):
+    return [p**i for i in range(n)]
   
   @staticmethod
   def __rand_partition(x, n):
@@ -111,14 +101,14 @@ class Lift:
     rng = np.random.default_rng(seed=seed)
     self.program = []
     vol_distr_blocks = rng.permutation(
-      self.vol_distr90[self.num_blocks]
+      self.vol_distr(self.num_blocks, 0.9)
     )
     vol_distr_blocks = vol_distr_blocks /  vol_distr_blocks.sum()
     volume_blocks = Lift.round_retain_sum(
       self.total_volume * vol_distr_blocks * 1.0
     )
     original_max = self.max
-    vol_distr_weeks = self.vol_distr80[self.num_weeks_per_block]
+    vol_distr_weeks = self.vol_distr(self.num_weeks_per_block, 0.8)
     for b in range(self.num_blocks):
       self.program.append([])
       vol_distr_weeks = self.gen_permutation(
@@ -130,7 +120,7 @@ class Lift:
       volume_weeks = Lift.round_retain_sum(
         volume_blocks[b] * vol_distr_weeks
       )
-      vol_distr_days = self.vol_distr80[self.num_days_per_week]
+      vol_distr_days = self.vol_distr(self.num_days_per_week, 0.8)
       for w in range(self.num_weeks_per_block):
         self.program[b].append([])
         vol_distr_days = self.gen_permutation(
@@ -189,8 +179,53 @@ class Lift:
 
 
 class VariableLoading:
-  @classmethod
-  def print_lifts(cls):
+  @staticmethod
+  def gen_program():
+    for lift in Lift.instances:
+      lift.gen_program()
+  
+  @staticmethod
+  def print_program(
+    to_file:bool=False
+  ):
+    if to_file:
+      fname = (
+        "data/program_" +
+        str(datetime.now().replace(microsecond=0)).replace(" ", "_") +
+        ".txt"
+      )
+      if not os.path.exists("data"):
+        os.makedirs("data")
+      
+
+    def _print(*args, **kwargs):
+      print(*args, **kwargs)
+      if to_file:
+        with open(fname, "a") as f:
+          print(*args, **kwargs, file=f)
+    max_lift_name_len = max(
+      len(lift.name) for lift in Lift.instances
+    )
+    for b in range(max(lift.num_blocks for lift in Lift.instances)):
+      _print(f"\n**----------Block {b+1}:----------**")
+      for w in range(max(lift.num_weeks_per_block for lift in Lift.instances)):
+        print(f"\n*-----Week {w+1}:-----*")
+        for d in range(max(lift.num_days_per_week for lift in Lift.instances)):
+          _print(f"\nDay {d+1}:")
+          for lift in Lift.instances:
+            if not (
+              b < len(lift.program)
+              and w < len(lift.program[b])
+              and d < len(lift.program[b][w])
+            ):
+              continue
+            day = lift.program[b][w][d]
+            wt = round(day["weight"]/lift.round_weight)*lift.round_weight
+            vol = day["volume"]
+            _print(f"{lift.name+':':<{max_lift_name_len+1}} {wt:>3} lbs x {vol:>2} reps")
+  
+  @staticmethod
+  def print_lifts():
     for lift in Lift.instances:
       print()
       print(lift)
@@ -212,14 +247,12 @@ def main():
     total_volume=800,
     num_days_per_week=5,
   )
-  VariableLoading.print_lifts()
-  #VariableLoading.gen_programs()
-  deadlift.gen_program(seed=101)
-  deadlift.print_program()
-  bench.gen_program(seed=102)
-  bench.print_program()
-  pullup.gen_program(seed=103)
-  pullup.print_program()
+  
+  VariableLoading.gen_program()
+  VariableLoading.print_program(to_file=True)
+  #deadlift.print_program()
+  #bench.print_program()
+  #pullup.print_program()
 
 
 if __name__ == "__main__":
