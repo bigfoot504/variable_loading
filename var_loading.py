@@ -24,8 +24,8 @@ class Lift:
     num_days_per_week: int=4,
     num_weeks_per_block: int=4,
     num_blocks: int=3,
-    round_weight_factor: float=5.0,
-    num_sets: tuple=(1, 1),
+    round_weight_factor: float=5,
+    num_loads: tuple=(1, 1),
   ):
     assert isinstance(name, str)
     assert isinstance(_max, (int, float)) and _max > 0
@@ -33,7 +33,7 @@ class Lift:
     total_volume = int(total_volume)
     assert total_volume > 0
     assert round_weight_factor > 0
-    assert len(num_sets) == 2 and all(isinstance(i, int) and i >= 1 for i in num_sets)
+    assert len(num_loads) == 2 and all(isinstance(i, int) and i >= 1 for i in num_loads)
     self.name = name
     self.max = _max
     self.weekly_max_incr = weekly_max_incr
@@ -44,7 +44,7 @@ class Lift:
     self.num_weeks_per_block = num_weeks_per_block
     self.num_blocks = num_blocks
     self.round_weight_factor = round_weight_factor
-    self.num_sets = num_sets
+    self.num_loads = num_loads
   
   def __str__(self):
     return (
@@ -65,6 +65,23 @@ class Lift:
     else:
       shape = None
     return shape
+  
+  @staticmethod
+  def estimate_1RM(weight, reps):
+    assert weight > 0
+    assert isinstance(reps, int) and reps >= 1
+    estimated_1RM = weight * (1 + reps / 30)
+    return estimated_1RM
+  
+  def estimate_max_reps(self, weight):
+    assert weight > 0
+    max_reps = int(round((self.max / weight - 1) * 30))
+    return max_reps
+  
+  def estimate_rep_max(self, reps):
+    assert isinstance(reps, int) and reps >= 1
+    weight = self.max / (1 + reps/30)
+    return weight
   
   @staticmethod
   def __rand_partition(x, n):
@@ -112,6 +129,31 @@ class Lift:
     load = (0.5 + x/2) * self.max
     return load
   
+  def gen_multi_wt_vol(
+    self,
+    vol: int,
+  ):
+    rng = np.random.default_rng()
+    wts = []
+    # loop gets number of and values of working weights
+
+    num_loads_tgt = rng.integers(self.num_loads[0], self.num_loads[1]+1)
+    for _ in range(num_loads_tgt):
+      wts.append(self.gen_load())
+      if vol <= sum(self.estimate_max_reps(wt) / 3 for wt in wts) and len(wts) > 1:
+        wts.pop(-1)
+        break
+    # assign num reps to each weight
+    if len(wts) > 1:
+      distr_reps2wts = np.array(
+        [self.estimate_max_reps(wt) for wt in wts]
+      )
+      distr_reps2wts = distr_reps2wts / sum(distr_reps2wts)
+      vols = self.__class__.round_retain_sum(distr_reps2wts * vol)
+    else:
+      vols = [vol]
+    return {"weight": wts, "volume": vols}
+  
   def gen_program(self, seed=None):
     rng = np.random.default_rng(seed=seed)
     self.program = []
@@ -148,12 +190,15 @@ class Lift:
           volume_weeks[w] * vol_distr_days
         )
         for d in range(self.num_days_per_week):
-          num_sets = rng.integers(self.num_sets[0], self.num_sets[1]+1)
+          num_loads = rng.integers(self.num_loads[0], self.num_loads[1]+1)
           self.program[b][w].append(
-            {
-              "weight": [self.gen_load() for _ in range(num_sets)],
-              "volume": self.__rand_partition(volume_days[d], num_sets),
-            }
+            self.gen_multi_wt_vol(
+              volume_days[d]
+            )
+            #{
+              #"weight": [self.gen_load() for _ in range(num_loads)],
+              #"volume": self.__rand_partition(volume_days[d], num_loads),
+            #}
           )
         self.max += self.weekly_max_incr
     self.max = original_max
@@ -233,9 +278,9 @@ class VariableLoading:
     for b in range(max(lift.num_blocks for lift in Lift.instances)):
       _print(f"\n**----------Block {b+1}:----------**")
       for w in range(max(lift.num_weeks_per_block for lift in Lift.instances)):
-        print(f"\n*-----Week {w+1}:-----*")
+        _print(f"\n{' '*7}*-----Week {w+1}:-----*")
         for d in range(max(lift.num_days_per_week for lift in Lift.instances)):
-          _print(f"\nDay {d+1}:")
+          _print(f"\n{' '*3}Day {d+1}:")
           for lift in Lift.instances:
             if not (
               b < len(lift.program)
@@ -261,12 +306,19 @@ def main():
     "Deadlift", 475, 1,
     total_volume=450,
     num_days_per_week=3,
-    num_sets=(1,3),
+    num_loads=(1,3),
   )
   bench = Lift(
     "Bench Press", 265, 0.5,
     total_volume=700,
     num_days_per_week=3,
+    num_loads=(1, 3),
+  )
+  squat = Lift(
+    "Squat", 375, 1,
+    total_volume=450,
+    num_days_per_week=3,
+    num_loads=(1,3),
   )
   pullup = Lift(
     "Pull-up", 1, 0.5,
