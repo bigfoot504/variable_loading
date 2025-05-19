@@ -7,6 +7,7 @@ To-Do: A future version will use the VariableLoading class to generate one progr
 """
 
 from datetime import datetime
+from tabulate import tabulate
 from pathlib import Path
 
 import numpy as np
@@ -220,11 +221,9 @@ class Lift:
         return x_new
     
     def round_weight(self, weight):
-        rounded_weight = float(
-            round(
-                weight / self.round_weight_factor
-            ) * self.round_weight_factor
-        )
+        rounded_weight = round(
+            weight / self.round_weight_factor
+        ) * self.round_weight_factor
         return rounded_weight
     
     def print_program(self):
@@ -281,6 +280,7 @@ class VariableLoading:
                 _print(f"\n{' '*7}*-----Week {w+1}:-----*")
                 for d in range(max(lift.num_days_per_week for lift in Lift.instances)):
                     _print(f"\n{' '*3}Day {d+1}:")
+                    table_data = []
                     for lift in Lift.instances:
                         if not (
                             b < len(lift.program)
@@ -291,8 +291,29 @@ class VariableLoading:
                         day = lift.program[b][w][d]
                         wts = [lift.round_weight(wt) for wt in day["weight"]]
                         vols = day["volume"]
+                        # Check if rounding causes duplicative weights &
+                        # consolidate their volumes.
+                        prev_wt = None
+                        ids_to_rmv = []
+                        for i, (wt, vol) in enumerate(zip(wts, vols)):
+                            if wt == prev_wt:
+                                vols[i-1] += vol
+                                ids_to_rmv.append(i)
+                            prev_wt = wt
+                        # remove wts and vols that were already consolidated
+                        wts = [wt for i, wt in enumerate(wts) if i not in ids_to_rmv]
+                        vols = [vol for i, vol in enumerate(vols) if i not in ids_to_rmv]
+                        # put into table
                         for wt, vol in zip(wts, vols):
-                            _print(f"{lift.name+':':<{max_lift_name_len+1}} {wt:>3} lbs x {vol:>2} reps")
+                            # _print(f"{lift.name+':':<{max_lift_name_len+1}} {wt:>3} lbs x {vol:>2} reps")
+                            table_data.append(
+                                [
+                                    lift.name if (table_data or ["None"])[-1][0]!=lift.name else "",
+                                    str(wt) + " lbs",
+                                    "x " + f"{vol:>3}" + " reps"
+                                ]
+                            )
+                    print(tabulate(table_data, headers=["Lift", "Weight", "Volume"], tablefmt="psql"))
     
     @staticmethod
     def print_lifts():
