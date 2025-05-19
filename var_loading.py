@@ -325,6 +325,18 @@ def main():
     total_volume=800,
     num_days_per_week=5,
   )
+  kb_swing = Lift(
+    "KB Swing", 1, 0.1,
+    total_volume=3*100*12,
+    num_days_per_week=3,
+  )
+  kb_press = Lift(
+    "KB Press", 80, 0.5,
+    total_volume=3*30*12,
+    num_days_per_week=3,
+    num_loads=(1, 3),
+    round_weight_factor=18,
+  )
   
   VariableLoading.gen_program()
   VariableLoading.print_program(to_file=True)
