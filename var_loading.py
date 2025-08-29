@@ -14,8 +14,6 @@ import numpy as np
 
 
 class Lift:
-    instances = []
-    
     def __init__(
         self,
         name: str,
@@ -38,7 +36,6 @@ class Lift:
         self.name = name
         self.max = _max
         self.weekly_max_incr = weekly_max_incr
-        Lift.instances.append(self)
         self.program = None
         self.total_volume = total_volume
         self.num_days_per_week = num_days_per_week
@@ -68,15 +65,22 @@ class Lift:
         return shape
     
     @staticmethod
-    def estimate_1RM(weight, reps):
+    def estimate_1RM(weight: float, reps: int) -> float:
         assert weight > 0
         assert isinstance(reps, int) and reps >= 1
         estimated_1RM = weight * (1 + reps / 30)
         return estimated_1RM
     
-    def estimate_max_reps(self, weight):
-        assert weight > 0
-        max_reps = int(round((self.max / weight - 1) * 30))
+    def estimate_max_reps(self, weight: float | np.ndarray) -> int | np.ndarray:
+        if isinstance(weight, np.ndarray):
+            _int, _round = np.int64, np.round
+            weight_good = all(weight > 0)
+        else:
+            _int, _round = int, round
+            weight_good = weight > 0
+        if not weight_good:
+            raise ValueError(f"weight must be positive, but instead it's {weight}")
+        max_reps = _int(_round((self.max / weight - 1) * 30))
         return max_reps
     
     def estimate_rep_max(self, reps):
@@ -106,21 +110,6 @@ class Lift:
             bins = np.array(partitions[1:] - partitions[:-1], dtype=int)
         return bins
     
-    @staticmethod
-    def round_retain_sum(x):
-        shape = x.shape
-        x = x.flatten()
-        N = np.round(np.sum(x)).astype(int)
-        y = x.astype(int)
-        M = np.sum(y)
-        K = N - M
-        z = y - x
-        if K != 0:
-                idx = np.argpartition(z, K)[:K]
-                y[idx] += 1
-                
-        return y.reshape(shape)
-    
     def gen_load(self, rng=None):
         if rng is None:
             rng = np.random.default_rng()
@@ -130,29 +119,45 @@ class Lift:
         load = (0.5 + x/2) * self.max
         return load
     
-    def gen_multi_wt_vol(
-        self,
-        vol: int,
-    ):
+    def gen_multi_wt_vol(self, vol: int) -> dict[str, np.ndarray]:
+        """Generate multiple training loads across a day's volume.
+        
+        Independently generates additional training loads (one each representing
+        an additional set) until all training volume has been allocated.
+        Ensures that reps per set are appropriate for each load generated.
+
+        Parameters
+        ----------
+        vol : int
+            _description_
+
+        Returns
+        -------
+        dict[str, np.ndarray]
+            _description_
+        """
         rng = np.random.default_rng()
         wts = []
         # loop gets number of and values of working weights
 
+        # We will try to make at most this many different training loads.
+        # Ex: self.num_loads=(2,4) -> We may draw num_loads_tgt = 2, 3, or 4.
         num_loads_tgt = rng.integers(self.num_loads[0], self.num_loads[1]+1)
         for _ in range(num_loads_tgt):
             wts.append(self.gen_load())
+            # Check if enough volume available to cover at least 1/3 of rep-max
+            # at each weight.
             if vol <= sum(self.estimate_max_reps(wt) / 3 for wt in wts) and len(wts) > 1:
                 wts.pop(-1)
                 break
+        wts = np.array(wts)
         # assign num reps to each weight
         if len(wts) > 1:
-            distr_reps2wts = np.array(
-                [self.estimate_max_reps(wt) for wt in wts]
-            )
-            distr_reps2wts = distr_reps2wts / sum(distr_reps2wts)
-            vols = self.__class__.round_retain_sum(distr_reps2wts * vol)
+            reps_per_set = self.estimate_max_reps(wts)
+            reps_distr = reps_per_set / sum(reps_per_set)
+            vols = round_retain_sum(reps_distr * vol)
         else:
-            vols = [vol]
+            vols = np.array([vol])
         return {"weight": wts, "volume": vols}
     
     def gen_program(self, seed=None):
@@ -162,7 +167,7 @@ class Lift:
             self.vol_distr(self.num_blocks, 0.9)
         )
         vol_distr_blocks = vol_distr_blocks /    vol_distr_blocks.sum()
-        volume_blocks = Lift.round_retain_sum(
+        volume_blocks = round_retain_sum(
             self.total_volume * vol_distr_blocks * 1.0
         )
         original_max = self.max
@@ -175,7 +180,7 @@ class Lift:
                 rng=rng,
             )
             vol_distr_weeks = vol_distr_weeks / vol_distr_weeks.sum()
-            volume_weeks = Lift.round_retain_sum(
+            volume_weeks = round_retain_sum(
                 volume_blocks[b] * vol_distr_weeks
             )
             vol_distr_days = self.vol_distr(self.num_days_per_week, 0.8)
@@ -187,20 +192,10 @@ class Lift:
                     rng=rng,
                 )
                 vol_distr_days = vol_distr_days / vol_distr_days.sum()
-                volume_days = Lift.round_retain_sum(
-                    volume_weeks[w] * vol_distr_days
-                )
+                volume_days = round_retain_sum(volume_weeks[w] * vol_distr_days)
                 for d in range(self.num_days_per_week):
-                    num_loads = rng.integers(self.num_loads[0], self.num_loads[1]+1)
-                    self.program[b][w].append(
-                        self.gen_multi_wt_vol(
-                            volume_days[d]
-                        )
-                        #{
-                            #"weight": [self.gen_load() for _ in range(num_loads)],
-                            #"volume": self.__rand_partition(volume_days[d], num_loads),
-                        #}
-                    )
+                    day_volume = self.gen_multi_wt_vol(volume_days[d])
+                    self.program[b][w].append(day_volume)
                 self.max += self.weekly_max_incr
         self.max = original_max
     
@@ -220,7 +215,7 @@ class Lift:
         
         return x_new
     
-    def round_weight(self, weight):
+    def round_weight(self, weight: float | np.ndarray) -> float | np.ndarray:
         rounded_weight = round(
             weight / self.round_weight_factor
         ) * self.round_weight_factor
@@ -246,16 +241,21 @@ class Lift:
             print(f"Block {b+1} volume: {vol_block}")
 
 
-class VariableLoading:
-    @staticmethod
-    def gen_program():
-        for lift in Lift.instances:
+class VariableLoadingProgram:
+    def __init__(self):
+        self.lifts: list[Lift] = []
+    
+    def add_lift(self, lift: Lift):
+        self.lifts.append(lift)
+    
+    def add_lifts(self, lifts: list[Lift]):
+        [self.add_lift(lift) for lift in lifts]
+    
+    def gen_program(self):
+        for lift in self.lifts:
             lift.gen_program()
     
-    @staticmethod
-    def print_program(
-        to_file:bool=False
-    ):
+    def print_program(self, to_file:bool=False):
         if to_file:
             filename = (
                 "program_" + datetime.now().replace(microsecond=0).strftime(
@@ -271,17 +271,18 @@ class VariableLoading:
             if to_file:
                 with open(file_path, "a") as f:
                     print(*args, **kwargs, file=f)
-        max_lift_name_len = max(
-            len(lift.name) for lift in Lift.instances
-        )
-        for b in range(max(lift.num_blocks for lift in Lift.instances)):
+        
+        max_num_blocks = max(lift.num_blocks for lift in self.lifts)
+        for b in range(max_num_blocks):
             _print(f"\n**----------Block {b+1}:----------**")
-            for w in range(max(lift.num_weeks_per_block for lift in Lift.instances)):
+            max_num_weeks = max(lift.num_weeks_per_block for lift in self.lifts)
+            for w in range(max_num_weeks):
                 _print(f"\n{' '*7}*-----Week {w+1}:-----*")
-                for d in range(max(lift.num_days_per_week for lift in Lift.instances)):
+                max_num_days = max(lift.num_days_per_week for lift in self.lifts)
+                for d in range(max_num_days):
                     _print(f"\n{' '*3}Day {d+1}:")
                     table_data = []
-                    for lift in Lift.instances:
+                    for lift in self.lifts:
                         if not (
                             b < len(lift.program)
                             and w < len(lift.program[b])
@@ -315,11 +316,25 @@ class VariableLoading:
                             )
                     print(tabulate(table_data, headers=["Lift", "Weight", "Volume"], tablefmt="psql"))
     
-    @staticmethod
-    def print_lifts():
-        for lift in Lift.instances:
+    def print_lifts(self):
+        for lift in self.lifts:
             print()
             print(lift)
+
+
+def round_retain_sum(x: np.ndarray) -> np.ndarray:
+    shape = x.shape
+    x = x.flatten()
+    N = np.round(np.sum(x)).astype(int)
+    y = x.astype(int)
+    M = np.sum(y)
+    K = N - M
+    z = y - x
+    if K != 0:
+            idx = np.argpartition(z, K)[:K]
+            y[idx] += 1
+            
+    return y.reshape(shape)
 
 
 def main():
@@ -341,6 +356,11 @@ def main():
         num_days_per_week=3,
         num_loads=(1,3),
     )
+    bb_row = Lift(
+        "Barbell Row", 245, 0.5,
+        total_volume=350,
+        num_days_per_week=2,
+    )
     pullup = Lift(
         "Pull-up", 1, 0.5,
         total_volume=800,
@@ -359,8 +379,10 @@ def main():
         round_weight_factor=18,
     )
     
-    VariableLoading.gen_program()
-    VariableLoading.print_program(to_file=True)
+    vl_program = VariableLoadingProgram()
+    vl_program.add_lifts([deadlift, bench, squat, bb_row, pullup, kb_swing, kb_press])
+    vl_program.gen_program()
+    vl_program.print_program(to_file=True)
     #deadlift.print_program()
     #bench.print_program()
     #pullup.print_program()
